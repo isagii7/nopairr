@@ -1,64 +1,52 @@
-import * as mega from "megajs";
-import fs from "fs";
+import * as mega from 'megajs';
 
 // Mega authentication credentials
 const auth = {
-    email: "@gmail.com", // your mega account login email
-    password: "@gmail.com", // your mega account login password
-    userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246",
+    email: 'abc@gmail.com', // Replace with your Mega email
+    password: 'abc@1234!', // Replace with your Mega password
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246'
 };
 
-export const upload = (filePath, fileName) => {
+// Function to upload a file to Mega and return the URL
+export const upload = (data, name) => {
     return new Promise((resolve, reject) => {
         try {
-            const storage = new mega.Storage(auth, (err) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
+            // Authenticate with Mega storage
+            const storage = new mega.Storage(auth, () => {
+                // Upload the data stream (e.g., file stream) to Mega
+                const uploadStream = storage.upload({ name: name, allowUploadBuffering: true });
 
-                const readStream = fs.createReadStream(filePath);
+                // Pipe the data into Mega
+                data.pipe(uploadStream);
 
-                const uploadStream = storage.upload({
-                    name: fileName,
-                    allowUploadBuffering: true,
-                });
-
-                readStream.pipe(uploadStream);
-
-                uploadStream.on("complete", (file) => {
+                // When the file is successfully uploaded, resolve with the file's URL
+                storage.on("add", (file) => {
                     file.link((err, url) => {
                         if (err) {
-                            reject(err);
+                            reject(err); // Reject if there's an error getting the link
                         } else {
-                            storage.close();
-                            resolve(url);
+                            storage.close(); // Close the storage session once the file is uploaded
+                            resolve(url); // Return the file's link
                         }
                     });
                 });
 
-                uploadStream.on("error", (error) => {
+                // Handle errors during file upload process
+                storage.on("error", (error) => {
                     reject(error);
                 });
-
-                readStream.on("error", (error) => {
-                    reject(error);
-                });
-            });
-
-            storage.on("error", (error) => {
-                reject(error);
             });
         } catch (err) {
-            reject(err);
+            reject(err); // Reject if any error occurs during the upload process
         }
     });
 };
 
+// Function to download a file from Mega using a URL
 export const download = (url) => {
     return new Promise((resolve, reject) => {
         try {
+            // Get file from Mega using the URL
             const file = mega.File.fromURL(url);
 
             file.loadAttributes((err) => {
@@ -67,11 +55,12 @@ export const download = (url) => {
                     return;
                 }
 
+                // Download the file buffer
                 file.downloadBuffer((err, buffer) => {
                     if (err) {
                         reject(err);
                     } else {
-                        resolve(buffer);
+                        resolve(buffer); // Return the file buffer
                     }
                 });
             });
