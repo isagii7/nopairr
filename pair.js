@@ -19,14 +19,13 @@ const __dirname = dirname(__filename);
 
 const router = express.Router();
 
-async function generateShortSession(credsPath) {
+// ===== ڈسک سے پڑھنے کی بجائے، براہِ راست کریڈنشلز کو انکوڈ کریں =====
+function getSessionString(creds) {
     try {
-        const credsData = fs.readFileSync(credsPath, 'utf-8');
-        const base64Creds = Buffer.from(credsData).toString('base64');
-        const sessionId = `NEXTY-MD~`;
-        return { sessionId, encodedData: base64Creds };
+        const base64Creds = Buffer.from(JSON.stringify(creds)).toString('base64');
+        return `NEXTY-MD~${base64Creds}`;
     } catch (error) {
-        console.error("Error generating short session:", error);
+        console.error("Error encoding creds:", error);
         return null;
     }
 }
@@ -53,96 +52,6 @@ router.get("/", async (req, res) => {
     let sessionSent = false;
     let sock;
 
-    async function sendSessionNow() {
-        if (sessionSent) return;
-        sessionSent = true;
-        console.log("✅ Sending session now...");
-        try {
-            const credsPath = join(dir, 'creds.json');
-            if (!fs.existsSync(credsPath)) {
-                throw new Error("creds.json not found");
-            }
-            const sessionInfo = await generateShortSession(credsPath);
-            if (!sessionInfo) throw new Error("Failed to generate session");
-
-            const jid = jidNormalizedUser(num + "@s.whatsapp.net");
-
-            // 1️⃣ سیشن سٹرنگ بھیجیں
-            const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
-            await sock.sendMessage(jid, { text: completeSession });
-            console.log("✅ Session string sent to user");
-
-            await delay(2000);
-
-            // 2️⃣ بوٹ کی معلومات
-            const fakeVCardQuoted = {
-                key: {
-                    fromMe: false,
-                    participant: "0@s.whatsapp.net",
-                    remoteJid: "status@broadcast"
-                },
-                message: {
-                    contactMessage: {
-                        displayName: "© NEXTY-MD",
-                        vcard: `BEGIN:VCARD
-VERSION:3.0
-FN:© NEXTY-MD
-ORG:NEXTY FORWARD;
-TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
-END:VCARD`
-                    }
-                }
-            };
-
-            const caption = `
-╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
-│★╭─────────────────────╮
-│★│ 👑 Owner : *NEXTY FORWARD*
-│★│ 🤖 Baileys : *Multi Device*
-│★│ 💻 Type : *NodeJs*
-│★│ 🚀 Platform : *Render*
-│★│ ⚙️ Mode : *Public*
-│★│ 🔣 Prefix : *[ . ]*
-│★│ 🏷️ Version : *8.0.0*
-│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K
-│★╰─────────────────────╯
-╰─────────────────────╯`;
-
-            await sock.sendMessage(
-                jid,
-                {
-                    image: { url: "https://files.catbox.moe/93fe56.jpg" },
-                    caption,
-                    contextInfo: {
-                        mentionedJid: [jid],
-                        forwardingScore: 999,
-                        isForwarded: true,
-                        forwardedNewsletterMessageInfo: {
-                            newsletterJid: "116505769414861@lid",
-                            newsletterName: "NEXTY-MD",
-                            serverMessageId: 143
-                        }
-                    }
-                },
-                { quoted: fakeVCardQuoted }
-            );
-            console.log("✅ Bot info sent to user");
-
-            await delay(2000);
-            rm(dir);
-            console.log("✅ Session cleaned up");
-            sock.end();
-        } catch (err) {
-            console.error("❌ Error in sending session:", err);
-            rm(dir);
-            try {
-                const jid = jidNormalizedUser(num + "@s.whatsapp.net");
-                await sock.sendMessage(jid, { text: "❌ Error generating session. Please try again." });
-            } catch(e) {}
-            sock.end();
-        }
-    }
-
     async function start() {
         const { state, saveCreds } = await useMultiFileAuthState(dir);
         const { version } = await fetchLatestBaileysVersion();
@@ -161,25 +70,115 @@ END:VCARD`
 
         sock.ev.on("creds.update", saveCreds);
 
-        // ✅ جب creds اپ ڈیٹ ہوں اور registered true ہو تو فوراً سیشن بھیجیں
+        // ===== ✅ جب creds اپ ڈیٹ ہوں اور registered true ہو =====
         sock.ev.on("creds.update", async () => {
             if (sessionSent) return;
-            // تھوڑا انتظار کریں تاکہ creds مکمل سیو ہو جائیں
-            await delay(500);
+            
+            // 🚀 یہاں کوئی delay نہیں — فوراً چیک کریں
             if (sock.authState.creds.registered) {
-                console.log("✅ Creds registered! (creds.update)");
-                await sendSessionNow();
+                sessionSent = true;
+                console.log("✅ Creds registered! Sending session immediately...");
+                try {
+                    const jid = jidNormalizedUser(num + "@s.whatsapp.net");
+                    const sessionString = getSessionString(sock.authState.creds);
+                    if (!sessionString) throw new Error("Failed to encode creds");
+
+                    // 1️⃣ سیشن سٹرنگ بھیجیں
+                    await sock.sendMessage(jid, { text: sessionString });
+                    console.log("✅ Session string sent to user");
+
+                    // 2️⃣ بوٹ کی معلومات (تصویر کے ساتھ)
+                    const fakeVCardQuoted = {
+                        key: {
+                            fromMe: false,
+                            participant: "0@s.whatsapp.net",
+                            remoteJid: "status@broadcast"
+                        },
+                        message: {
+                            contactMessage: {
+                                displayName: "© NEXTY-MD",
+                                vcard: `BEGIN:VCARD
+VERSION:3.0
+FN:© NEXTY-MD
+ORG:NEXTY FORWARD;
+TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
+END:VCARD`
+                            }
+                        }
+                    };
+
+                    const caption = `
+╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
+│★╭─────────────────────╮
+│★│ 👑 Owner : *NEXTY FORWARD*
+│★│ 🤖 Baileys : *Multi Device*
+│★│ 💻 Type : *NodeJs*
+│★│ 🚀 Platform : *Render*
+│★│ ⚙️ Mode : *Public*
+│★│ 🔣 Prefix : *[ . ]*
+│★│ 🏷️ Version : *8.0.0*
+│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K
+│★╰─────────────────────╯
+╰─────────────────────╯`;
+
+                    await sock.sendMessage(
+                        jid,
+                        {
+                            image: { url: "https://files.catbox.moe/93fe56.jpg" },
+                            caption,
+                            contextInfo: {
+                                mentionedJid: [jid],
+                                forwardingScore: 999,
+                                isForwarded: true,
+                                forwardedNewsletterMessageInfo: {
+                                    newsletterJid: "116505769414861@lid",
+                                    newsletterName: "NEXTY-MD",
+                                    serverMessageId: 143
+                                }
+                            }
+                        },
+                        { quoted: fakeVCardQuoted }
+                    );
+                    console.log("✅ Bot info sent to user");
+
+                    await delay(1000);
+                    rm(dir);
+                    console.log("✅ Session cleaned up");
+                    sock.end();
+                } catch (err) {
+                    console.error("❌ Error in sending session:", err);
+                    rm(dir);
+                    sock.end();
+                }
             } else {
                 console.log("⚠️ creds.update fired but registered is false");
             }
         });
 
-        // ✅ بیک اپ: connection.update پر open آئے تو بھی سیشن بھیجیں
+        // ===== 🛡️ بیک اپ: اگر open آئے تو بھی بھیج دیں =====
         sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
             console.log(`🔄 Connection update: ${connection}`);
+            
+            // اگر پہلے سے سیشن نہیں بھیجا اور کنکشن کھل گیا
             if (connection === "open" && !sessionSent) {
-                console.log("✅ Connection open! (fallback)");
-                await sendSessionNow();
+                sessionSent = true;
+                console.log("✅ Connection open! (fallback) Sending session...");
+                try {
+                    const jid = jidNormalizedUser(num + "@s.whatsapp.net");
+                    const sessionString = getSessionString(sock.authState.creds);
+                    if (!sessionString) throw new Error("Failed to encode creds");
+
+                    await sock.sendMessage(jid, { text: sessionString });
+                    console.log("✅ Session string sent to user (fallback)");
+
+                    await delay(1000);
+                    rm(dir);
+                    sock.end();
+                } catch (err) {
+                    console.error("❌ Error in fallback sending:", err);
+                    rm(dir);
+                    sock.end();
+                }
             }
 
             if (connection === "close") {
@@ -189,7 +188,6 @@ END:VCARD`
                 } else {
                     console.log("🔁 Connection closed — cleaning up");
                 }
-                // اگر سیشن نہیں بھیجا تو صفائی کریں
                 if (!sessionSent) {
                     rm(dir);
                     sock.end();
@@ -197,7 +195,7 @@ END:VCARD`
             }
         });
 
-        // پئیرنگ کوڈ درخواست کریں
+        // ===== پئیرنگ کوڈ درخواست کریں =====
         if (!sock.authState.creds.registered) {
             await delay(3000);
             try {
@@ -212,7 +210,7 @@ END:VCARD`
                 }
                 console.log(`✅ Pairing code sent: ${code}`);
 
-                // ⏱️ ٹائم آؤٹ: اگر 40 سیکنڈ میں پئیرنگ نہ ہو تو صفائی کریں
+                // ⏱️ ٹائم آؤٹ: اگر 40 سیکنڈ میں پئیرنگ نہ ہو تو صفائی
                 setTimeout(() => {
                     if (!sessionSent) {
                         console.log("⏰ Timeout: Pairing did not complete. Cleaning up.");
