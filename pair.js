@@ -26,7 +26,7 @@ async function generateShortSession(credsPath) {
         const base64Creds = Buffer.from(credsData).toString('base64');
         const y = new Date().getFullYear();
         const r = Math.random().toString(36).substring(2, 6).toUpperCase();
-        const sessionId = `NEXTY-MD~`;  // changed from KIRA-MD~
+        const sessionId = `NEXTY-MD~`;
         return {
             sessionId: sessionId,
             encodedData: base64Creds
@@ -94,7 +94,7 @@ router.get("/", async (req, res) => {
 
                     await delay(2000);
 
-                    // 3️⃣ Send bot info (ALIVE STYLE: Fake vCard + Image + Caption)
+                    // 3️⃣ Send bot info (ALIVE STYLE: Fake vCard + Image + Caption) - KIRA-MD Style
 
                     // ---- Fake vCard (quoted) ----
                     const fakeVCardQuoted = {
@@ -105,29 +105,29 @@ router.get("/", async (req, res) => {
                       },
                       message: {
                         contactMessage: {
-                          displayName: "© NEXTY-MD",        // changed
+                          displayName: "© NEXTY-MD",
                           vcard: `BEGIN:VCARD
 VERSION:3.0
 FN:© NEXTY-MD
-ORG:NEXTY FORWARD;                                 // changed
+ORG:NEXTY FORWARD;
 TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
 END:VCARD`
                         }
                       }
                     };
 
-                    // ---- Caption with updated credit and channel link ----
+                    // ---- Caption in KIRA-MD Box Style ----
                     const caption = `
 ╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
 │★╭─────────────────────╮
-│★│ 👑 Owner : *NEXTY FORWARD*        // changed
+│★│ 👑 Owner : *NEXTY FORWARD*
 │★│ 🤖 Baileys : *Multi Device*
 │★│ 💻 Type : *NodeJs*
 │★│ 🚀 Platform : *Render*
 │★│ ⚙️ Mode : *Public*
 │★│ 🔣 Prefix : *[ . ]*
 │★│ 🏷️ Version : *8.0.0*
-│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K   // added your link
+│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K
 │★╰─────────────────────╯
 ╰─────────────────────╯`;
 
@@ -135,15 +135,15 @@ END:VCARD`
                     await sock.sendMessage(
                       jid,
                       {
-                        image: { url: "https://files.catbox.moe/16i1l7.jpg" },
+                        image: { url: "https://files.catbox.moe/93fe56.jpg" },
                         caption,
                         contextInfo: {
                           mentionedJid: [jid],
                           forwardingScore: 999,
                           isForwarded: true,
                           forwardedNewsletterMessageInfo: {
-                            newsletterJid: "120363348739987203@newsletter",
-                            newsletterName: "NEXTY-MD",  // changed from KIRA-MD style
+                            newsletterJid: "116505769414861@lid",  // ✅ YOUR CHANNEL JID
+                            newsletterName: "NEXTY-MD",
                             serverMessageId: 143
                           }
                         }
