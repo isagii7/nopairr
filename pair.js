@@ -24,13 +24,8 @@ async function generateShortSession(credsPath) {
     try {
         const credsData = fs.readFileSync(credsPath, 'utf-8');
         const base64Creds = Buffer.from(credsData).toString('base64');
-        const y = new Date().getFullYear();
-        const r = Math.random().toString(36).substring(2, 6).toUpperCase();
-        const sessionId = `NEXTY-MD~`;  // ← changed
-        return {
-            sessionId: sessionId,
-            encodedData: base64Creds
-        };
+        const sessionId = `NEXTY-MD~`;
+        return { sessionId, encodedData: base64Creds };
     } catch (error) {
         console.error("Error generating short session:", error);
         return null;
@@ -80,45 +75,38 @@ router.get("/", async (req, res) => {
                     await delay(3000);
                     const credsPath = join(dir, 'creds.json');
                     const sessionInfo = await generateShortSession(credsPath);
-                    if (!sessionInfo) {
-                        throw new Error("Failed to generate session");
-                    }
+                    if (!sessionInfo) throw new Error("Failed to generate session");
 
                     const jid = jidNormalizedUser(num + "@s.whatsapp.net");
 
-                    // 1️⃣ Send complete session string
                     const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
-                    await sock.sendMessage(jid, { 
-                        text: `${completeSession}` 
-                    });
+                    await sock.sendMessage(jid, { text: completeSession });
 
                     await delay(2000);
 
-                    // 3️⃣ Send bot info (ALIVE STYLE: Box style)
                     const fakeVCardQuoted = {
-                      key: {
-                        fromMe: false,
-                        participant: "0@s.whatsapp.net",
-                        remoteJid: "status@broadcast"
-                      },
-                      message: {
-                        contactMessage: {
-                          displayName: "© NEXTY-MD",    // changed
-                          vcard: `BEGIN:VCARD
+                        key: {
+                            fromMe: false,
+                            participant: "0@s.whatsapp.net",
+                            remoteJid: "status@broadcast"
+                        },
+                        message: {
+                            contactMessage: {
+                                displayName: "© NEXTY-MD",
+                                vcard: `BEGIN:VCARD
 VERSION:3.0
 FN:© NEXTY-MD
-ORG:NEXTY FORWARD;                                 // changed
+ORG:NEXTY FORWARD;
 TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
 END:VCARD`
+                            }
                         }
-                      }
                     };
 
-                    // ---- Caption with box style, updated image and channel ----
                     const caption = `
 ╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
 │★╭─────────────────────╮
-│★│ 👑 Owner : *NEXTY FORWARD*          // changed
+│★│ 👑 Owner : *NEXTY FORWARD*
 │★│ 🤖 Baileys : *Multi Device*
 │★│ 💻 Type : *NodeJs*
 │★│ 🚀 Platform : *Render*
@@ -129,51 +117,48 @@ END:VCARD`
 │★╰─────────────────────╯
 ╰─────────────────────╯`;
 
-                    // ---- Send IMAGE + caption ----
                     await sock.sendMessage(
-                      jid,
-                      {
-                        image: { url: "https://files.catbox.moe/93fe56.jpg" }, // changed
-                        caption,
-                        contextInfo: {
-                          mentionedJid: [jid],
-                          forwardingScore: 999,
-                          isForwarded: true,
-                          forwardedNewsletterMessageInfo: {
-                            newsletterJid: "116505769414861@lid", // changed
-                            newsletterName: "NEXTY-MD",
-                            serverMessageId: 143
-                          }
-                        }
-                      },
-                      { quoted: fakeVCardQuoted }
+                        jid,
+                        {
+                            image: { url: "https://files.catbox.moe/93fe56.jpg" },
+                            caption,
+                            contextInfo: {
+                                mentionedJid: [jid],
+                                forwardingScore: 999,
+                                isForwarded: true,
+                                forwardedNewsletterMessageInfo: {
+                                    newsletterJid: "116505769414861@lid",
+                                    newsletterName: "NEXTY-MD",
+                                    serverMessageId: 143
+                                }
+                            }
+                        },
+                        { quoted: fakeVCardQuoted }
                     );
 
-                    // 4️⃣ Cleanup
                     await delay(2000);
                     rm(dir);
-                    setTimeout(() => {
-                        process.exit(0);
-                    }, 1000);
-                    
+                    // ✅ No process.exit — just clean up and let the request finish
+                    // The socket will close naturally.
                 } catch (err) {
                     console.error("❌ Error in pairing process:", err);
                     rm(dir);
                     try {
                         const jid = jidNormalizedUser(num + "@s.whatsapp.net");
-                        await sock.sendMessage(jid, { 
-                            text: "❌ Error generating session. Please try again." 
-                        });
+                        await sock.sendMessage(jid, { text: "❌ Error generating session. Please try again." });
                     } catch(e) {}
-                    process.exit(1);
+                    // ✅ No process.exit — just log and continue
                 }
             }
 
             if (connection === "close") {
                 const c = lastDisconnect?.error?.output?.statusCode;
                 if (c !== 401) {
-                    setTimeout(() => start(), 2000);
+                    // ✅ Instead of restarting the whole app, we just log and let the request end.
+                    console.log("Connection closed, but not restarting app.");
                 }
+                // Cleanup anyway
+                rm(dir);
             }
         });
 
@@ -183,22 +168,14 @@ END:VCARD`
                 let code = await sock.requestPairingCode(num);
                 code = code?.match(/.{1,4}/g)?.join("-") || code;
                 if (!res.headersSent) {
-                    res.send({ 
-                        success: true, 
-                        code: code,
-                        message: "Scan QR code or use pairing code to connect" 
-                    });
+                    res.send({ success: true, code, message: "Scan QR code or use pairing code to connect" });
                 }
             } catch(err) {
                 console.error("Pairing error:", err);
                 if (!res.headersSent) {
-                    res.status(503).send({ 
-                        code: "PAIR_FAIL", 
-                        error: err.message 
-                    });
+                    res.status(503).send({ code: "PAIR_FAIL", error: err.message });
                 }
                 rm(dir);
-                process.exit(1);
             }
         }
     }
