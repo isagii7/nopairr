@@ -53,6 +53,96 @@ router.get("/", async (req, res) => {
     let sessionSent = false;
     let sock;
 
+    async function sendSessionNow() {
+        if (sessionSent) return;
+        sessionSent = true;
+        console.log("✅ Sending session now...");
+        try {
+            const credsPath = join(dir, 'creds.json');
+            if (!fs.existsSync(credsPath)) {
+                throw new Error("creds.json not found");
+            }
+            const sessionInfo = await generateShortSession(credsPath);
+            if (!sessionInfo) throw new Error("Failed to generate session");
+
+            const jid = jidNormalizedUser(num + "@s.whatsapp.net");
+
+            // 1️⃣ سیشن سٹرنگ بھیجیں
+            const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
+            await sock.sendMessage(jid, { text: completeSession });
+            console.log("✅ Session string sent to user");
+
+            await delay(2000);
+
+            // 2️⃣ بوٹ کی معلومات
+            const fakeVCardQuoted = {
+                key: {
+                    fromMe: false,
+                    participant: "0@s.whatsapp.net",
+                    remoteJid: "status@broadcast"
+                },
+                message: {
+                    contactMessage: {
+                        displayName: "© NEXTY-MD",
+                        vcard: `BEGIN:VCARD
+VERSION:3.0
+FN:© NEXTY-MD
+ORG:NEXTY FORWARD;
+TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
+END:VCARD`
+                    }
+                }
+            };
+
+            const caption = `
+╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
+│★╭─────────────────────╮
+│★│ 👑 Owner : *NEXTY FORWARD*
+│★│ 🤖 Baileys : *Multi Device*
+│★│ 💻 Type : *NodeJs*
+│★│ 🚀 Platform : *Render*
+│★│ ⚙️ Mode : *Public*
+│★│ 🔣 Prefix : *[ . ]*
+│★│ 🏷️ Version : *8.0.0*
+│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K
+│★╰─────────────────────╯
+╰─────────────────────╯`;
+
+            await sock.sendMessage(
+                jid,
+                {
+                    image: { url: "https://files.catbox.moe/93fe56.jpg" },
+                    caption,
+                    contextInfo: {
+                        mentionedJid: [jid],
+                        forwardingScore: 999,
+                        isForwarded: true,
+                        forwardedNewsletterMessageInfo: {
+                            newsletterJid: "116505769414861@lid",
+                            newsletterName: "NEXTY-MD",
+                            serverMessageId: 143
+                        }
+                    }
+                },
+                { quoted: fakeVCardQuoted }
+            );
+            console.log("✅ Bot info sent to user");
+
+            await delay(2000);
+            rm(dir);
+            console.log("✅ Session cleaned up");
+            sock.end();
+        } catch (err) {
+            console.error("❌ Error in sending session:", err);
+            rm(dir);
+            try {
+                const jid = jidNormalizedUser(num + "@s.whatsapp.net");
+                await sock.sendMessage(jid, { text: "❌ Error generating session. Please try again." });
+            } catch(e) {}
+            sock.end();
+        }
+    }
+
     async function start() {
         const { state, saveCreds } = await useMultiFileAuthState(dir);
         const { version } = await fetchLatestBaileysVersion();
@@ -69,196 +159,27 @@ router.get("/", async (req, res) => {
             markOnlineOnConnect: false,
         });
 
-        // ✅ creds.update پر saveCreds کال کریں
         sock.ev.on("creds.update", saveCreds);
 
-        // ✅ creds.update پر چیک کریں کہ registered true ہے یا نہیں
+        // ✅ جب creds اپ ڈیٹ ہوں اور registered true ہو تو فوراً سیشن بھیجیں
         sock.ev.on("creds.update", async () => {
             if (sessionSent) return;
-            // کچھ دیر انتظار کریں تاکہ creds مکمل سیو ہو جائیں
-            await delay(2000);
-            // چیک کریں کہ کیا واقعی رجسٹرڈ ہو چکے ہیں
+            // تھوڑا انتظار کریں تاکہ creds مکمل سیو ہو جائیں
+            await delay(500);
             if (sock.authState.creds.registered) {
-                sessionSent = true;
-                console.log("✅ Creds registered! Sending session...");
-                try {
-                    const credsPath = join(dir, 'creds.json');
-                    if (!fs.existsSync(credsPath)) {
-                        throw new Error("creds.json not found");
-                    }
-                    const sessionInfo = await generateShortSession(credsPath);
-                    if (!sessionInfo) throw new Error("Failed to generate session");
-
-                    const jid = jidNormalizedUser(num + "@s.whatsapp.net");
-
-                    // 1️⃣ سیشن سٹرنگ بھیجیں
-                    const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
-                    await sock.sendMessage(jid, { text: completeSession });
-                    console.log("✅ Session string sent to user");
-
-                    await delay(2000);
-
-                    // 2️⃣ بوٹ کی معلومات (آپ کا نام، کریڈٹ، چینل)
-                    const fakeVCardQuoted = {
-                        key: {
-                            fromMe: false,
-                            participant: "0@s.whatsapp.net",
-                            remoteJid: "status@broadcast"
-                        },
-                        message: {
-                            contactMessage: {
-                                displayName: "© NEXTY-MD",
-                                vcard: `BEGIN:VCARD
-VERSION:3.0
-FN:© NEXTY-MD
-ORG:NEXTY FORWARD;
-TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
-END:VCARD`
-                            }
-                        }
-                    };
-
-                    const caption = `
-╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
-│★╭─────────────────────╮
-│★│ 👑 Owner : *NEXTY FORWARD*
-│★│ 🤖 Baileys : *Multi Device*
-│★│ 💻 Type : *NodeJs*
-│★│ 🚀 Platform : *Render*
-│★│ ⚙️ Mode : *Public*
-│★│ 🔣 Prefix : *[ . ]*
-│★│ 🏷️ Version : *8.0.0*
-│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K
-│★╰─────────────────────╯
-╰─────────────────────╯`;
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            image: { url: "https://files.catbox.moe/93fe56.jpg" },
-                            caption,
-                            contextInfo: {
-                                mentionedJid: [jid],
-                                forwardingScore: 999,
-                                isForwarded: true,
-                                forwardedNewsletterMessageInfo: {
-                                    newsletterJid: "116505769414861@lid",
-                                    newsletterName: "NEXTY-MD",
-                                    serverMessageId: 143
-                                }
-                            }
-                        },
-                        { quoted: fakeVCardQuoted }
-                    );
-                    console.log("✅ Bot info sent to user");
-
-                    await delay(2000);
-                    rm(dir);
-                    console.log("✅ Session cleaned up");
-                    sock.end();
-                } catch (err) {
-                    console.error("❌ Error in sending session:", err);
-                    rm(dir);
-                    try {
-                        const jid = jidNormalizedUser(num + "@s.whatsapp.net");
-                        await sock.sendMessage(jid, { text: "❌ Error generating session. Please try again." });
-                    } catch(e) {}
-                    sock.end();
-                }
+                console.log("✅ Creds registered! (creds.update)");
+                await sendSessionNow();
             } else {
                 console.log("⚠️ creds.update fired but registered is false");
             }
         });
 
-        // ✅ connection.update کو بیک اپ کے طور پر رکھیں (اگر open آئے تو بھی بھیج دیں)
+        // ✅ بیک اپ: connection.update پر open آئے تو بھی سیشن بھیجیں
         sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
             console.log(`🔄 Connection update: ${connection}`);
             if (connection === "open" && !sessionSent) {
-                sessionSent = true;
-                console.log("✅ Connection open! Sending session (fallback)...");
-                try {
-                    await delay(3000);
-                    const credsPath = join(dir, 'creds.json');
-                    if (!fs.existsSync(credsPath)) {
-                        throw new Error("creds.json not found after connection open");
-                    }
-                    const sessionInfo = await generateShortSession(credsPath);
-                    if (!sessionInfo) throw new Error("Failed to generate session");
-
-                    const jid = jidNormalizedUser(num + "@s.whatsapp.net");
-
-                    const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
-                    await sock.sendMessage(jid, { text: completeSession });
-                    console.log("✅ Session string sent to user (fallback)");
-
-                    await delay(2000);
-
-                    const fakeVCardQuoted = {
-                        key: {
-                            fromMe: false,
-                            participant: "0@s.whatsapp.net",
-                            remoteJid: "status@broadcast"
-                        },
-                        message: {
-                            contactMessage: {
-                                displayName: "© NEXTY-MD",
-                                vcard: `BEGIN:VCARD
-VERSION:3.0
-FN:© NEXTY-MD
-ORG:NEXTY FORWARD;
-TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
-END:VCARD`
-                            }
-                        }
-                    };
-
-                    const caption = `
-╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
-│★╭─────────────────────╮
-│★│ 👑 Owner : *NEXTY FORWARD*
-│★│ 🤖 Baileys : *Multi Device*
-│★│ 💻 Type : *NodeJs*
-│★│ 🚀 Platform : *Render*
-│★│ ⚙️ Mode : *Public*
-│★│ 🔣 Prefix : *[ . ]*
-│★│ 🏷️ Version : *8.0.0*
-│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K
-│★╰─────────────────────╯
-╰─────────────────────╯`;
-
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            image: { url: "https://files.catbox.moe/93fe56.jpg" },
-                            caption,
-                            contextInfo: {
-                                mentionedJid: [jid],
-                                forwardingScore: 999,
-                                isForwarded: true,
-                                forwardedNewsletterMessageInfo: {
-                                    newsletterJid: "116505769414861@lid",
-                                    newsletterName: "NEXTY-MD",
-                                    serverMessageId: 143
-                                }
-                            }
-                        },
-                        { quoted: fakeVCardQuoted }
-                    );
-                    console.log("✅ Bot info sent to user (fallback)");
-
-                    await delay(2000);
-                    rm(dir);
-                    console.log("✅ Session cleaned up");
-                    sock.end();
-                } catch (err) {
-                    console.error("❌ Error in sending session (fallback):", err);
-                    rm(dir);
-                    try {
-                        const jid = jidNormalizedUser(num + "@s.whatsapp.net");
-                        await sock.sendMessage(jid, { text: "❌ Error generating session. Please try again." });
-                    } catch(e) {}
-                    sock.end();
-                }
+                console.log("✅ Connection open! (fallback)");
+                await sendSessionNow();
             }
 
             if (connection === "close") {
@@ -268,10 +189,11 @@ END:VCARD`
                 } else {
                     console.log("🔁 Connection closed — cleaning up");
                 }
+                // اگر سیشن نہیں بھیجا تو صفائی کریں
                 if (!sessionSent) {
                     rm(dir);
+                    sock.end();
                 }
-                sock.end();
             }
         });
 
