@@ -19,12 +19,11 @@ const __dirname = dirname(__filename);
 
 const router = express.Router();
 
-// ===== سیشن جنریٹر (صرف پریفکس تبدیل) =====
 async function generateShortSession(credsPath) {
     try {
         const credsData = fs.readFileSync(credsPath, 'utf-8');
         const base64Creds = Buffer.from(credsData).toString('base64');
-        const sessionId = `NEXTY-MD~`;  // ← NAME CHANGE
+        const sessionId = `NEXTY-MD~`;
         return { sessionId, encodedData: base64Creds };
     } catch (error) {
         console.error("Error generating short session:", error);
@@ -73,12 +72,11 @@ router.get("/", async (req, res) => {
         sock.ev.on("creds.update", saveCreds);
 
         sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
-            // ✅ جب کنکشن کھل جائے (پئیرنگ کامیاب)
             if (connection === "open" && !sessionSent) {
                 sessionSent = true;
                 console.log("✅ Connection open! Sending session...");
                 try {
-                    await delay(3000); // creds.json کو سیو ہونے کا وقت
+                    await delay(3000);
                     const credsPath = join(dir, 'creds.json');
                     if (!fs.existsSync(credsPath)) {
                         throw new Error("creds.json not found after connection open");
@@ -88,14 +86,12 @@ router.get("/", async (req, res) => {
 
                     const jid = jidNormalizedUser(num + "@s.whatsapp.net");
 
-                    // 1️⃣ سیشن سٹرنگ بھیجیں
                     const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
                     await sock.sendMessage(jid, { text: completeSession });
                     console.log("✅ Session string sent to user");
 
                     await delay(2000);
 
-                    // 2️⃣ بوٹ کی معلومات (نام اور کریڈٹ تبدیل)
                     const fakeVCardQuoted = {
                         key: {
                             fromMe: false,
@@ -104,11 +100,11 @@ router.get("/", async (req, res) => {
                         },
                         message: {
                             contactMessage: {
-                                displayName: "© NEXTY-MD",  // ← NAME
+                                displayName: "© NEXTY-MD",
                                 vcard: `BEGIN:VCARD
 VERSION:3.0
 FN:© NEXTY-MD
-ORG:NEXTY FORWARD;                         // ← CREDIT
+ORG:NEXTY FORWARD;
 TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
 END:VCARD`
                             }
@@ -118,28 +114,28 @@ END:VCARD`
                     const caption = `
 ╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
 │★╭─────────────────────╮
-│★│ 👑 Owner : *NEXTY FORWARD*            // ← CREDIT
+│★│ 👑 Owner : *NEXTY FORWARD*
 │★│ 🤖 Baileys : *Multi Device*
 │★│ 💻 Type : *NodeJs*
 │★│ 🚀 Platform : *Render*
 │★│ ⚙️ Mode : *Public*
 │★│ 🔣 Prefix : *[ . ]*
 │★│ 🏷️ Version : *8.0.0*
-│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K   // ← CHANNEL LINK
+│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K
 │★╰─────────────────────╯
 ╰─────────────────────╯`;
 
                     await sock.sendMessage(
                         jid,
                         {
-                            image: { url: "https://files.catbox.moe/93fe56.jpg" }, // ← IMAGE
+                            image: { url: "https://files.catbox.moe/93fe56.jpg" },
                             caption,
                             contextInfo: {
                                 mentionedJid: [jid],
                                 forwardingScore: 999,
                                 isForwarded: true,
                                 forwardedNewsletterMessageInfo: {
-                                    newsletterJid: "116505769414861@lid",  // ← CHANNEL JID
+                                    newsletterJid: "116505769414861@lid",
                                     newsletterName: "NEXTY-MD",
                                     serverMessageId: 143
                                 }
@@ -178,7 +174,6 @@ END:VCARD`
             }
         });
 
-        // پئیرنگ کوڈ درخواست کریں
         if (!sock.authState.creds.registered) {
             await delay(3000);
             try {
@@ -193,7 +188,6 @@ END:VCARD`
                 }
                 console.log(`✅ Pairing code sent: ${code}`);
 
-                // ⏱️ ٹائم آؤٹ: اگر 30 سیکنڈ میں کنکشن نہ کھلے تو صفائی کریں
                 setTimeout(() => {
                     if (!sessionSent) {
                         console.log("⏰ Timeout: No connection open. Cleaning up.");
