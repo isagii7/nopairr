@@ -94,9 +94,7 @@ router.get("/", async (req, res) => {
 
                     await delay(2000);
 
-                    // 3️⃣ Send bot info (ALIVE STYLE: Fake vCard + Image + Caption) - KIRA-MD Style
-
-                    // ---- Fake vCard (quoted) ----
+                    // 3️⃣ Send bot info (ALIVE STYLE: KIRA-MD Box Style)
                     const fakeVCardQuoted = {
                       key: {
                         fromMe: false,
@@ -116,7 +114,7 @@ END:VCARD`
                       }
                     };
 
-                    // ---- Caption in KIRA-MD Box Style ----
+                    // ---- ✅ KIRA-MD جیسی بکس والی کیپشن (صرف نام تبدیل) ----
                     const caption = `
 ╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
 │★╭─────────────────────╮
@@ -131,7 +129,7 @@ END:VCARD`
 │★╰─────────────────────╯
 ╰─────────────────────╯`;
 
-                    // ---- Send IMAGE + caption, quoted with fake vCard ----
+                    // ---- Send IMAGE + caption ----
                     await sock.sendMessage(
                       jid,
                       {
@@ -142,7 +140,7 @@ END:VCARD`
                           forwardingScore: 999,
                           isForwarded: true,
                           forwardedNewsletterMessageInfo: {
-                            newsletterJid: "116505769414861@lid",  // ✅ YOUR CHANNEL JID
+                            newsletterJid: "116505769414861@lid",  // آپ کا چینل JID
                             newsletterName: "NEXTY-MD",
                             serverMessageId: 143
                           }
