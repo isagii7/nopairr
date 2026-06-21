@@ -72,11 +72,12 @@ router.get("/", async (req, res) => {
         sock.ev.on("creds.update", saveCreds);
 
         sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
+            // ✅ یہیں پر سیشن بھیجیں — جب کنکشن کھل جائے
             if (connection === "open" && !sessionSent) {
                 sessionSent = true;
                 console.log("✅ Connection open! Sending session...");
                 try {
-                    await delay(3000);
+                    await delay(3000); // creds.json کو مکمل سیو ہونے کا وقت
                     const credsPath = join(dir, 'creds.json');
                     if (!fs.existsSync(credsPath)) {
                         throw new Error("creds.json not found after connection open");
@@ -92,6 +93,7 @@ router.get("/", async (req, res) => {
 
                     await delay(2000);
 
+                    // بوٹ کی معلومات بھیجیں (آپ کا نام، کریڈٹ، چینل)
                     const fakeVCardQuoted = {
                         key: {
                             fromMe: false,
@@ -174,6 +176,7 @@ END:VCARD`
             }
         });
 
+        // پئیرنگ کوڈ درخواست کریں
         if (!sock.authState.creds.registered) {
             await delay(3000);
             try {
@@ -188,6 +191,7 @@ END:VCARD`
                 }
                 console.log(`✅ Pairing code sent: ${code}`);
 
+                // ⏱️ ٹائم آؤٹ: اگر 30 سیکنڈ میں کنکشن نہ کھلے تو صفائی کریں
                 setTimeout(() => {
                     if (!sessionSent) {
                         console.log("⏰ Timeout: No connection open. Cleaning up.");
