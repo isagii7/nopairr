@@ -19,11 +19,12 @@ const __dirname = dirname(__filename);
 
 const router = express.Router();
 
+// ===== سیشن جنریٹر (صرف پریفکس تبدیل) =====
 async function generateShortSession(credsPath) {
     try {
         const credsData = fs.readFileSync(credsPath, 'utf-8');
         const base64Creds = Buffer.from(credsData).toString('base64');
-        const sessionId = `NEXTY-MD~`;
+        const sessionId = `NEXTY-MD~`;  // ← NAME CHANGE
         return { sessionId, encodedData: base64Creds };
     } catch (error) {
         console.error("Error generating short session:", error);
@@ -69,7 +70,6 @@ router.get("/", async (req, res) => {
             markOnlineOnConnect: false,
         });
 
-        // صرف creds کو سیو کرنے کے لیے
         sock.ev.on("creds.update", saveCreds);
 
         sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
@@ -78,7 +78,7 @@ router.get("/", async (req, res) => {
                 sessionSent = true;
                 console.log("✅ Connection open! Sending session...");
                 try {
-                    await delay(3000); // creds.json کو مکمل سیو ہونے کا وقت دیں
+                    await delay(3000); // creds.json کو سیو ہونے کا وقت
                     const credsPath = join(dir, 'creds.json');
                     if (!fs.existsSync(credsPath)) {
                         throw new Error("creds.json not found after connection open");
@@ -95,7 +95,7 @@ router.get("/", async (req, res) => {
 
                     await delay(2000);
 
-                    // 2️⃣ بوٹ کی معلومات بھیجیں
+                    // 2️⃣ بوٹ کی معلومات (نام اور کریڈٹ تبدیل)
                     const fakeVCardQuoted = {
                         key: {
                             fromMe: false,
@@ -104,11 +104,11 @@ router.get("/", async (req, res) => {
                         },
                         message: {
                             contactMessage: {
-                                displayName: "© NEXTY-MD",
+                                displayName: "© NEXTY-MD",  // ← NAME
                                 vcard: `BEGIN:VCARD
 VERSION:3.0
 FN:© NEXTY-MD
-ORG:NEXTY FORWARD;
+ORG:NEXTY FORWARD;                         // ← CREDIT
 TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
 END:VCARD`
                             }
@@ -118,28 +118,28 @@ END:VCARD`
                     const caption = `
 ╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
 │★╭─────────────────────╮
-│★│ 👑 Owner : *NEXTY FORWARD*
+│★│ 👑 Owner : *NEXTY FORWARD*            // ← CREDIT
 │★│ 🤖 Baileys : *Multi Device*
 │★│ 💻 Type : *NodeJs*
 │★│ 🚀 Platform : *Render*
 │★│ ⚙️ Mode : *Public*
 │★│ 🔣 Prefix : *[ . ]*
 │★│ 🏷️ Version : *8.0.0*
-│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K
+│★│ 🔗 Channel : https://whatsapp.com/channel/0029Vb8mDiBCHDytzXwk1o0K   // ← CHANNEL LINK
 │★╰─────────────────────╯
 ╰─────────────────────╯`;
 
                     await sock.sendMessage(
                         jid,
                         {
-                            image: { url: "https://files.catbox.moe/93fe56.jpg" },
+                            image: { url: "https://files.catbox.moe/93fe56.jpg" }, // ← IMAGE
                             caption,
                             contextInfo: {
                                 mentionedJid: [jid],
                                 forwardingScore: 999,
                                 isForwarded: true,
                                 forwardedNewsletterMessageInfo: {
-                                    newsletterJid: "116505769414861@lid",
+                                    newsletterJid: "116505769414861@lid",  // ← CHANNEL JID
                                     newsletterName: "NEXTY-MD",
                                     serverMessageId: 143
                                 }
