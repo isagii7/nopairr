@@ -21,9 +21,8 @@ function removeFile(FilePath) {
 }
 
 router.get('/', async (req, res) => {
-    // Generate unique session for each request to avoid conflicts
-    const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    const dirs = `./qr_sessions/session_${sessionId}`;
+    // Use fixed session folder for QR as well
+    const dirs = './qr_sessions/NEXTY-MD~';
 
     // Ensure qr_sessions directory exists
     if (!fs.existsSync('./qr_sessions')) {
@@ -31,7 +30,7 @@ router.get('/', async (req, res) => {
     }
 
     async function initiateSession() {
-        // ✅ PERMANENT FIX: Create the session folder before anything
+        // Create the session folder
         if (!fs.existsSync(dirs)) fs.mkdirSync(dirs, { recursive: true });
 
         const { state, saveCreds } = await useMultiFileAuthState(dirs);
@@ -53,10 +52,7 @@ router.get('/', async (req, res) => {
                 console.log('2. Go to Settings > Linked Devices');
                 console.log('3. Tap "Link a Device"');
                 console.log('4. Scan the QR code below');
-                // Display QR in terminal
-                //qrcodeTerminal.generate(qr, { small: true });
                 try {
-                    // Generate QR code as data URL
                     const qrDataURL = await QRCode.toDataURL(qr, {
                         errorCorrectionLevel: 'M',
                         type: 'image/png',
@@ -91,30 +87,27 @@ router.get('/', async (req, res) => {
                 }
             };
 
-            // Improved Baileys socket configuration
             const socketConfig = {
                 version,
                 logger: pino({ level: 'silent' }),
-                browser: Browsers.windows('Chrome'), // Using Browsers enum for better compatibility
+                browser: Browsers.windows('Chrome'),
                 auth: {
                     creds: state.creds,
                     keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
                 },
-                markOnlineOnConnect: false, // Disable to reduce connection issues
-                generateHighQualityLinkPreview: false, // Disable to reduce connection issues
-                defaultQueryTimeoutMs: 60000, // Increase timeout
-                connectTimeoutMs: 60000, // Increase connection timeout
-                keepAliveIntervalMs: 30000, // Keep connection alive
-                retryRequestDelayMs: 250, // Retry delay
-                maxRetries: 5, // Maximum retries
+                markOnlineOnConnect: false,
+                generateHighQualityLinkPreview: false,
+                defaultQueryTimeoutMs: 60000,
+                connectTimeoutMs: 60000,
+                keepAliveIntervalMs: 30000,
+                retryRequestDelayMs: 250,
+                maxRetries: 5,
             };
 
-            // Create socket and bind events
             let sock = makeWASocket(socketConfig);
             let reconnectAttempts = 0;
             const maxReconnectAttempts = 3;
 
-            // Connection event handler function
             const handleConnectionUpdate = async (update) => {
                 const { connection, lastDisconnect, qr } = update;
                 console.log(`🔄 Connection update: ${connection || 'undefined'}`);
@@ -126,21 +119,15 @@ router.get('/', async (req, res) => {
                 if (connection === 'open') {
                     console.log('✅ Connected successfully!');
                     console.log('💾 Session saved to:', dirs);
-                    reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+                    reconnectAttempts = 0;
                     
                     try {
-                        
-                        
-                        // Read the session file
                         const sessionKnight = fs.readFileSync(dirs + '/creds.json');
-                        
-                        // Get the user's JID from the session
                         const userJid = Object.keys(sock.authState.creds.me || {}).length > 0 
                             ? jidNormalizedUser(sock.authState.creds.me.id) 
                             : null;
                             
                         if (userJid) {
-                            // Send session file to user
                             await sock.sendMessage(userJid, {
                                 document: sessionKnight,
                                 mimetype: 'application/json',
@@ -148,14 +135,12 @@ router.get('/', async (req, res) => {
                             });
                             console.log("📄 Session file sent successfully to", userJid);
                             
-                            // Send video thumbnail with caption (channel link removed)
                             await sock.sendMessage(userJid, {
                                 image: { url: 'https://img.youtube.com/vi/-oz_u1iMgf8/maxresdefault.jpg' },
                                 caption: `🎬 *NEXXTY XMD V2.0 Full Setup Guide!*\n\n🚀 Bug Fixes + New Commands + Fast AI Chat`
                             });
                             console.log("🎬 Video guide sent successfully");
                             
-                            // Send warning message (credit removed)
                             await sock.sendMessage(userJid, {
                                 text: `⚠️Do not share this file with anybody⚠️\n 
 ┌┤✑  Thanks for using NEXXTY XMD
@@ -170,7 +155,6 @@ router.get('/', async (req, res) => {
                         console.error("Error sending session file:", error);
                     }
                     
-                    // Clean up session after successful connection and sending files
                     setTimeout(() => {
                         console.log('🧹 Cleaning up session...');
                         const deleted = removeFile(dirs);
@@ -179,7 +163,7 @@ router.get('/', async (req, res) => {
                         } else {
                             console.log('❌ Failed to clean up session folder');
                         }
-                    }, 15000); // Wait 15 seconds before cleanup to ensure messages are sent
+                    }, 15000);
                 }
 
                 if (connection === 'close') {
@@ -190,7 +174,6 @@ router.get('/', async (req, res) => {
                     
                     const statusCode = lastDisconnect?.error?.output?.statusCode;
                     
-                    // Handle specific error codes
                     if (statusCode === 401) {
                         console.log('🔐 Logged out - need new QR code');
                         removeFile(dirs);
@@ -200,7 +183,6 @@ router.get('/', async (req, res) => {
                         
                         if (reconnectAttempts <= maxReconnectAttempts) {
                             console.log(`🔄 Reconnect attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
-                            // Wait a bit before reconnecting
                             setTimeout(() => {
                                 try {
                                     sock = makeWASocket(socketConfig);
@@ -219,24 +201,20 @@ router.get('/', async (req, res) => {
                         }
                     } else {
                         console.log('🔄 Connection lost - attempting to reconnect...');
-                        // Let it reconnect automatically
                     }
                 }
             };
 
-            // Bind the event handler
             sock.ev.on('connection.update', handleConnectionUpdate);
-
             sock.ev.on('creds.update', saveCreds);
 
-            // Set a timeout to clean up if no QR is generated
             setTimeout(() => {
                 if (!responseSent) {
                     responseSent = true;
                     res.status(408).send({ code: 'QR generation timeout' });
                     removeFile(dirs);
                 }
-            }, 30000); // 30 second timeout
+            }, 30000);
 
         } catch (err) {
             console.error('Error initializing session:', err);
