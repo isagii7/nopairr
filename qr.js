@@ -131,7 +131,6 @@ router.get("/", async (req, res) => {
                         }
                     } catch (error) {
                         console.error("❌ Error uploading to MEGA (ignored):", error);
-                        // ✅ We don't exit; just log the error and continue.
                     }
 
                     console.log("🧹 Cleaning up session...");
@@ -139,7 +138,7 @@ router.get("/", async (req, res) => {
                     removeFile(dirs);
                     console.log("✅ Session cleaned up successfully");
                     console.log("🎉 Process completed for this QR request.");
-                    // ✅ No process.exit — just let the function finish.
+                    sock.end();
                 }
 
                 if (isNewLogin) {
@@ -156,13 +155,11 @@ router.get("/", async (req, res) => {
                         console.log("❌ Logged out from WhatsApp. Need to generate new QR code.");
                     } else {
                         console.log("🔁 Connection closed — cleaning up.");
-                        // ✅ Instead of restarting, just clean up and finish.
                         removeFile(dirs);
                     }
                 }
             });
 
-            // Timeout after 30 seconds if QR not sent
             setTimeout(() => {
                 if (!responseSent) {
                     responseSent = true;
