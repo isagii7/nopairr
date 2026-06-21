@@ -30,6 +30,7 @@ function getSessionString(creds) {
     }
 }
 
+// ===== ڈائریکٹری صفائی (صرف آخر میں استعمال کریں) =====
 function rm(p) {
     try { 
         if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true }); 
@@ -46,11 +47,13 @@ router.get("/", async (req, res) => {
     if (!phone.isValid()) return res.status(400).send({ code: "Invalid number" });
     num = phone.getNumber("e164").replace("+", "");
 
-    const dir = "./session" + num;
-    rm(dir);
+    // ڈائریکٹری کا نام: session_<number>_<timestamp> تاکہ ٹکراؤ نہ ہو
+    const dir = `./session_${num}_${Date.now()}`;
+    // شروع میں ڈائریکٹری کو ہٹانا نہیں — اسے بننے دیں
 
     let sessionSent = false;
     let sock;
+    let timeoutId;
 
     async function sendSessionNow() {
         if (sessionSent) return;
@@ -61,11 +64,11 @@ router.get("/", async (req, res) => {
             const sessionString = getSessionString(sock.authState.creds);
             if (!sessionString) throw new Error("Failed to encode creds");
 
-            // 1️⃣ سیشن سٹرنگ فوراً بھیجیں
+            // 1️⃣ سیشن سٹرنگ بھیجیں
             await sock.sendMessage(jid, { text: sessionString });
             console.log("✅ Session string sent to user");
 
-            // 2️⃣ بوٹ کی معلومات (تھوڑی تاخیر کے ساتھ)
+            // 2️⃣ بوٹ کی معلومات (تصویر، کیپشن) — تھوڑی تاخیر کے ساتھ
             await delay(1000);
             const fakeVCardQuoted = {
                 key: {
@@ -120,6 +123,7 @@ END:VCARD`
             );
             console.log("✅ Bot info sent to user");
 
+            // صفائی کریں
             await delay(1000);
             rm(dir);
             console.log("✅ Session cleaned up");
@@ -154,6 +158,8 @@ END:VCARD`
             console.log(`🔄 Connection update: ${connection}`);
             if (connection === "open" && !sessionSent) {
                 console.log("✅ Connection open! Sending session...");
+                // اگر timeout پہلے سے سیٹ ہے تو اسے کلئیر کریں
+                if (timeoutId) clearTimeout(timeoutId);
                 await sendSessionNow();
             }
 
@@ -187,7 +193,7 @@ END:VCARD`
                 console.log(`✅ Pairing code sent: ${code}`);
 
                 // ⏱️ ٹائم آؤٹ: اگر 40 سیکنڈ میں open نہ آئے تو صفائی
-                setTimeout(() => {
+                timeoutId = setTimeout(() => {
                     if (!sessionSent) {
                         console.log("⏰ Timeout: No connection open. Cleaning up.");
                         rm(dir);
