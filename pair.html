@@ -613,7 +613,7 @@
       </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"></script>
+    <!-- ✅ اب Axios نہیں، pure fetch استعمال ہوگا -->
     <script>
       let currentMode = "pair";
 
@@ -666,12 +666,13 @@
         qrDisplay.style.display = "none";
 
         try {
-          const response = await axios("/qr");
+          const response = await fetch("/qr");
+          const data = await response.json();
 
-          if (response.data.qr) {
-            document.getElementById("qrImage").src = response.data.qr;
+          if (data.qr) {
+            document.getElementById("qrImage").src = data.qr;
             document.getElementById("qrInstructions").innerHTML =
-              response.data.instructions.join("<br>");
+              data.instructions.join("<br>");
             qrDisplay.style.display = "block";
             codeDisplay.style.display = "none";
           } else {
@@ -709,13 +710,13 @@
         qrDisplay.style.display = "none";
 
         try {
-          const response = await axios(
-            `/pair?number=${mobileNumber.replace(/[^0-9]/g, "")}`,
-          );
+          const cleanNumber = mobileNumber.replace(/[^0-9]/g, "");
+          const response = await fetch(`/pair?number=${cleanNumber}`);
+          const data = await response.json();
 
-          const code = response.data.code || "Service Unavailable";
+          const code = data.code || "Service Unavailable";
           if (code === "Service Unavailable") {
             codeDisplay.innerHTML =
               '<div class="error-message"><i class="fas fa-exclamation-circle"></i> Service Unavailable</div>';
           } else {
-            codeDisplay.innerHTML = `<div class="success-message"><i class="fas fa-check-circle"></i> CODE: $
+            codeDisplay.innerHTML = `<div class="success-message"><i class="fas f
