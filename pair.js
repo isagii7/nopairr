@@ -61,12 +61,12 @@ router.get("/", async (req, res) => {
             const sessionString = getSessionString(sock.authState.creds);
             if (!sessionString) throw new Error("Failed to encode creds");
 
-            // 1️⃣ سیشن سٹرنگ فوراً بھیجیں (بغیر کسی تاخیر کے)
+            // 1️⃣ سیشن سٹرنگ فوراً بھیجیں
             await sock.sendMessage(jid, { text: sessionString });
             console.log("✅ Session string sent to user");
 
-            // 2️⃣ بوٹ کی معلومات (اس میں تھوڑی تاخیر ہو سکتی ہے، لیکن سیشن پہلے ہی بھیج دیا گیا)
-            await delay(1500); // مختصر تاخیر تاکہ میسج آرڈر برقرار رہے
+            // 2️⃣ بوٹ کی معلومات (تھوڑی تاخیر کے ساتھ)
+            await delay(1000);
             const fakeVCardQuoted = {
                 key: {
                     fromMe: false,
@@ -149,23 +149,11 @@ END:VCARD`
 
         sock.ev.on("creds.update", saveCreds);
 
-        // ✅ جب creds اپ ڈیٹ ہوں اور registered true ہو تو فوراً بھیجیں
-        sock.ev.on("creds.update", async () => {
-            if (sessionSent) return;
-            // کوئی delay نہیں — فوراً چیک کریں
-            if (sock.authState.creds.registered) {
-                console.log("✅ Creds registered! (creds.update)");
-                await sendSessionNow(); // فوراً بھیجیں
-            } else {
-                console.log("⚠️ creds.update fired but registered is false");
-            }
-        });
-
-        // 🛡️ بیک اپ: اگر open آئے تو بھی بھیج دیں
+        // ✅ صرف connection.open پر سیشن بھیجیں
         sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
             console.log(`🔄 Connection update: ${connection}`);
             if (connection === "open" && !sessionSent) {
-                console.log("✅ Connection open! (fallback)");
+                console.log("✅ Connection open! Sending session...");
                 await sendSessionNow();
             }
 
@@ -198,10 +186,10 @@ END:VCARD`
                 }
                 console.log(`✅ Pairing code sent: ${code}`);
 
-                // ⏱️ ٹائم آؤٹ: اگر 40 سیکنڈ میں پئیرنگ نہ ہو تو صفائی
+                // ⏱️ ٹائم آؤٹ: اگر 40 سیکنڈ میں open نہ آئے تو صفائی
                 setTimeout(() => {
                     if (!sessionSent) {
-                        console.log("⏰ Timeout: Pairing did not complete. Cleaning up.");
+                        console.log("⏰ Timeout: No connection open. Cleaning up.");
                         rm(dir);
                         sock.end();
                     }
