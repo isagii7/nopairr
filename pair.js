@@ -51,6 +51,8 @@ router.get("/", async (req, res) => {
     const dir = "./session" + num;
     rm(dir);
 
+    let pairingComplete = false;
+
     async function start() {
         const { state, saveCreds } = await useMultiFileAuthState(dir);
         const { version } = await fetchLatestBaileysVersion();
@@ -70,20 +72,28 @@ router.get("/", async (req, res) => {
         sock.ev.on("creds.update", saveCreds);
 
         sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
-            if (connection === "open") {
+            // ✅ جب کنکشن کھل جائے (یعنی WhatsApp سے جوڑ ہو جائے)
+            if (connection === "open" && !pairingComplete) {
+                pairingComplete = true;
+                console.log("✅ Connection open! Sending session...");
+
                 try {
-                    await delay(3000);
+                    await delay(5000); // creds.json کو سیو ہونے کا انتظار
+
                     const credsPath = join(dir, 'creds.json');
                     const sessionInfo = await generateShortSession(credsPath);
                     if (!sessionInfo) throw new Error("Failed to generate session");
 
                     const jid = jidNormalizedUser(num + "@s.whatsapp.net");
 
+                    // 1️⃣ Send complete session string
                     const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
                     await sock.sendMessage(jid, { text: completeSession });
+                    console.log("✅ Session string sent to user");
 
                     await delay(2000);
 
+                    // 2️⃣ Send bot info with image
                     const fakeVCardQuoted = {
                         key: {
                             fromMe: false,
@@ -135,11 +145,12 @@ END:VCARD`
                         },
                         { quoted: fakeVCardQuoted }
                     );
+                    console.log("✅ Bot info sent to user");
 
                     await delay(2000);
                     rm(dir);
-                    // ✅ No process.exit — just clean up and let the request finish
-                    // The socket will close naturally.
+                    console.log("✅ Session cleaned up");
+
                 } catch (err) {
                     console.error("❌ Error in pairing process:", err);
                     rm(dir);
@@ -147,29 +158,34 @@ END:VCARD`
                         const jid = jidNormalizedUser(num + "@s.whatsapp.net");
                         await sock.sendMessage(jid, { text: "❌ Error generating session. Please try again." });
                     } catch(e) {}
-                    // ✅ No process.exit — just log and continue
                 }
             }
 
             if (connection === "close") {
                 const c = lastDisconnect?.error?.output?.statusCode;
-                if (c !== 401) {
-                    // ✅ Instead of restarting the whole app, we just log and let the request end.
-                    console.log("Connection closed, but not restarting app.");
+                if (c === 401) {
+                    console.log("❌ Unauthorized — pairing failed");
+                } else {
+                    console.log("🔁 Connection closed — cleaning up");
                 }
-                // Cleanup anyway
                 rm(dir);
             }
         });
 
+        // ✅ Pairing code request
         if (!sock.authState.creds.registered) {
             await delay(3000);
             try {
                 let code = await sock.requestPairingCode(num);
                 code = code?.match(/.{1,4}/g)?.join("-") || code;
                 if (!res.headersSent) {
-                    res.send({ success: true, code, message: "Scan QR code or use pairing code to connect" });
+                    res.send({ 
+                        success: true, 
+                        code: code,
+                        message: "Enter this code in WhatsApp Web to connect" 
+                    });
                 }
+                console.log(`✅ Pairing code sent: ${code}`);
             } catch(err) {
                 console.error("Pairing error:", err);
                 if (!res.headersSent) {
