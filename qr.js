@@ -1,4 +1,3 @@
-
 import express from "express";
 import fs from "fs";
 import pino from "pino";
@@ -239,5 +238,3 @@ process.on("uncaughtException", (err) => {
 });
 
 export default router;
-
-  
