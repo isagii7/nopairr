@@ -1,4 +1,3 @@
-
 import * as mega from "megajs";
 import fs from "fs";
 
