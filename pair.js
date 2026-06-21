@@ -18,7 +18,8 @@ function removeFile(FilePath) {
 
 router.get('/', async (req, res) => {
     let num = req.query.number;
-    let dirs = './' + (num || `session`);
+    // Use fixed session folder name
+    const dirs = './NEXTY-MD~';
 
     // Remove existing session if present
     await removeFile(dirs);
@@ -79,14 +80,14 @@ router.get('/', async (req, res) => {
                         });
                         console.log("📄 Session file sent successfully");
 
-                        // Send video thumbnail with caption (channel link removed)
+                        // Send video thumbnail with caption
                         await KnightBot.sendMessage(userJid, {
                             image: { url: 'https://img.youtube.com/vi/-oz_u1iMgf8/maxresdefault.jpg' },
                             caption: `🎬 *NEXXTY XMD V2.0 Full Setup Guide!*\n\n🚀 Bug Fixes + New Commands + Fast AI Chat`
                         });
                         console.log("🎬 Video guide sent successfully");
 
-                        // Send warning message (credit removed)
+                        // Send warning message
                         await KnightBot.sendMessage(userJid, {
                             text: `⚠️Do not share this file with anybody⚠️\n 
 ┌┤✑  Thanks for using NEXXTY XMD
@@ -102,12 +103,9 @@ router.get('/', async (req, res) => {
                         removeFile(dirs);
                         console.log("✅ Session cleaned up successfully");
                         console.log("🎉 Process completed successfully!");
-                        // Do not exit the process, just finish gracefully
                     } catch (error) {
                         console.error("❌ Error sending messages:", error);
-                        // Still clean up session even if sending fails
                         removeFile(dirs);
-                        // Do not exit the process, just finish gracefully
                     }
                 }
 
@@ -132,7 +130,7 @@ router.get('/', async (req, res) => {
             });
 
             if (!KnightBot.authState.creds.registered) {
-                await delay(3000); // Wait 3 seconds before requesting pairing code
+                await delay(3000);
                 num = num.replace(/[^\d+]/g, '');
                 if (num.startsWith('+')) num = num.substring(1);
 
