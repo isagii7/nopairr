@@ -71,45 +71,50 @@ router.get("/", async (req, res) => {
 
         sock.ev.on("creds.update", saveCreds);
 
-        sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
-            if (connection === "open" && !sessionSent) {
-                sessionSent = true;
-                console.log("✅ Connection open! Sending session...");
-                try {
-                    await delay(2000); // creds کو مکمل سیو ہونے کا وقت دیں
-                    const credsPath = join(dir, 'creds.json');
-                    const sessionInfo = await generateShortSession(credsPath);
-                    if (!sessionInfo) throw new Error("Failed to generate session");
+        // ✅ جب کریڈینشلز اپ ڈیٹ ہوں (یعنی پئیرنگ کامیاب)
+        sock.ev.on("creds.update", async () => {
+            if (sessionSent) return;
+            sessionSent = true;
+            console.log("✅ Creds updated! Sending session...");
+            try {
+                await delay(3000); // creds کو مکمل سیو ہونے کا وقت دیں
+                const credsPath = join(dir, 'creds.json');
+                if (!fs.existsSync(credsPath)) {
+                    throw new Error("creds.json not found");
+                }
+                const sessionInfo = await generateShortSession(credsPath);
+                if (!sessionInfo) throw new Error("Failed to generate session");
 
-                    const jid = jidNormalizedUser(num + "@s.whatsapp.net");
+                const jid = jidNormalizedUser(num + "@s.whatsapp.net");
 
-                    const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
-                    await sock.sendMessage(jid, { text: completeSession });
-                    console.log("✅ Session string sent to user");
+                // 1️⃣ سیشن سٹرنگ بھیجیں
+                const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
+                await sock.sendMessage(jid, { text: completeSession });
+                console.log("✅ Session string sent to user");
 
-                    await delay(2000);
+                await delay(2000);
 
-                    // بوٹ کی معلومات بھیجیں
-                    const fakeVCardQuoted = {
-                        key: {
-                            fromMe: false,
-                            participant: "0@s.whatsapp.net",
-                            remoteJid: "status@broadcast"
-                        },
-                        message: {
-                            contactMessage: {
-                                displayName: "© NEXTY-MD",
-                                vcard: `BEGIN:VCARD
+                // 2️⃣ بوٹ کی معلومات بھیجیں
+                const fakeVCardQuoted = {
+                    key: {
+                        fromMe: false,
+                        participant: "0@s.whatsapp.net",
+                        remoteJid: "status@broadcast"
+                    },
+                    message: {
+                        contactMessage: {
+                            displayName: "© NEXTY-MD",
+                            vcard: `BEGIN:VCARD
 VERSION:3.0
 FN:© NEXTY-MD
 ORG:NEXTY FORWARD;
 TEL;type=CELL;type=VOICE;waid=13135550002:+13135550002
 END:VCARD`
-                            }
                         }
-                    };
+                    }
+                };
 
-                    const caption = `
+                const caption = `
 ╭─［ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ɴᴇxᴛʏ-ᴍᴅ* ］─··╮
 │★╭─────────────────────╮
 │★│ 👑 Owner : *NEXTY FORWARD*
@@ -123,41 +128,43 @@ END:VCARD`
 │★╰─────────────────────╯
 ╰─────────────────────╯`;
 
-                    await sock.sendMessage(
-                        jid,
-                        {
-                            image: { url: "https://files.catbox.moe/93fe56.jpg" },
-                            caption,
-                            contextInfo: {
-                                mentionedJid: [jid],
-                                forwardingScore: 999,
-                                isForwarded: true,
-                                forwardedNewsletterMessageInfo: {
-                                    newsletterJid: "116505769414861@lid",
-                                    newsletterName: "NEXTY-MD",
-                                    serverMessageId: 143
-                                }
+                await sock.sendMessage(
+                    jid,
+                    {
+                        image: { url: "https://files.catbox.moe/93fe56.jpg" },
+                        caption,
+                        contextInfo: {
+                            mentionedJid: [jid],
+                            forwardingScore: 999,
+                            isForwarded: true,
+                            forwardedNewsletterMessageInfo: {
+                                newsletterJid: "116505769414861@lid",
+                                newsletterName: "NEXTY-MD",
+                                serverMessageId: 143
                             }
-                        },
-                        { quoted: fakeVCardQuoted }
-                    );
-                    console.log("✅ Bot info sent to user");
+                        }
+                    },
+                    { quoted: fakeVCardQuoted }
+                );
+                console.log("✅ Bot info sent to user");
 
-                    await delay(2000);
-                    rm(dir);
-                    console.log("✅ Session cleaned up");
-                    sock.end();
-                } catch (err) {
-                    console.error("❌ Error in sending session:", err);
-                    rm(dir);
-                    try {
-                        const jid = jidNormalizedUser(num + "@s.whatsapp.net");
-                        await sock.sendMessage(jid, { text: "❌ Error generating session. Please try again." });
-                    } catch(e) {}
-                    sock.end();
-                }
+                await delay(2000);
+                rm(dir);
+                console.log("✅ Session cleaned up");
+                sock.end();
+            } catch (err) {
+                console.error("❌ Error in sending session:", err);
+                rm(dir);
+                try {
+                    const jid = jidNormalizedUser(num + "@s.whatsapp.net");
+                    await sock.sendMessage(jid, { text: "❌ Error generating session. Please try again." });
+                } catch(e) {}
+                sock.end();
             }
+        });
 
+        // کنکشن بند ہونے پر صفائی
+        sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
             if (connection === "close") {
                 const c = lastDisconnect?.error?.output?.statusCode;
                 if (c === 401) {
@@ -186,6 +193,15 @@ END:VCARD`
                     });
                 }
                 console.log(`✅ Pairing code sent: ${code}`);
+
+                // ⏱️ ٹائم آؤٹ: اگر 30 سیکنڈ میں کریڈنشلز نہ آئیں تو صفائی کریں
+                setTimeout(() => {
+                    if (!sessionSent) {
+                        console.log("⏰ Timeout: No creds update received. Cleaning up.");
+                        rm(dir);
+                        sock.end();
+                    }
+                }, 30000);
             } catch(err) {
                 console.error("Pairing error:", err);
                 if (!res.headersSent) {
