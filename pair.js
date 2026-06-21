@@ -19,14 +19,13 @@ const __dirname = dirname(__filename);
 
 const router = express.Router();
 
-async function generateShortSession(credsPath) {
+// ===== براہِ راست کریڈنشلز سے سیشن سٹرنگ بنائیں =====
+function getSessionString(creds) {
     try {
-        const credsData = fs.readFileSync(credsPath, 'utf-8');
-        const base64Creds = Buffer.from(credsData).toString('base64');
-        const sessionId = `NEXTY-MD~`;
-        return { sessionId, encodedData: base64Creds };
+        const base64Creds = Buffer.from(JSON.stringify(creds)).toString('base64');
+        return `NEXTY-MD~${base64Creds}`;
     } catch (error) {
-        console.error("Error generating short session:", error);
+        console.error("Error encoding creds:", error);
         return null;
     }
 }
@@ -58,21 +57,16 @@ router.get("/", async (req, res) => {
         sessionSent = true;
         console.log("✅ Sending session now...");
         try {
-            const credsPath = join(dir, 'creds.json');
-            if (!fs.existsSync(credsPath)) {
-                throw new Error("creds.json not found");
-            }
-            const sessionInfo = await generateShortSession(credsPath);
-            if (!sessionInfo) throw new Error("Failed to generate session");
-
             const jid = jidNormalizedUser(num + "@s.whatsapp.net");
+            const sessionString = getSessionString(sock.authState.creds);
+            if (!sessionString) throw new Error("Failed to encode creds");
 
-            const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
-            await sock.sendMessage(jid, { text: completeSession });
+            // 1️⃣ سیشن سٹرنگ فوراً بھیجیں (بغیر کسی تاخیر کے)
+            await sock.sendMessage(jid, { text: sessionString });
             console.log("✅ Session string sent to user");
 
-            await delay(2000);
-
+            // 2️⃣ بوٹ کی معلومات (اس میں تھوڑی تاخیر ہو سکتی ہے، لیکن سیشن پہلے ہی بھیج دیا گیا)
+            await delay(1500); // مختصر تاخیر تاکہ میسج آرڈر برقرار رہے
             const fakeVCardQuoted = {
                 key: {
                     fromMe: false,
@@ -126,17 +120,13 @@ END:VCARD`
             );
             console.log("✅ Bot info sent to user");
 
-            await delay(2000);
+            await delay(1000);
             rm(dir);
             console.log("✅ Session cleaned up");
             sock.end();
         } catch (err) {
             console.error("❌ Error in sending session:", err);
             rm(dir);
-            try {
-                const jid = jidNormalizedUser(num + "@s.whatsapp.net");
-                await sock.sendMessage(jid, { text: "❌ Error generating session. Please try again." });
-            } catch(e) {}
             sock.end();
         }
     }
@@ -159,17 +149,19 @@ END:VCARD`
 
         sock.ev.on("creds.update", saveCreds);
 
+        // ✅ جب creds اپ ڈیٹ ہوں اور registered true ہو تو فوراً بھیجیں
         sock.ev.on("creds.update", async () => {
             if (sessionSent) return;
-            await delay(500);
+            // کوئی delay نہیں — فوراً چیک کریں
             if (sock.authState.creds.registered) {
                 console.log("✅ Creds registered! (creds.update)");
-                await sendSessionNow();
+                await sendSessionNow(); // فوراً بھیجیں
             } else {
                 console.log("⚠️ creds.update fired but registered is false");
             }
         });
 
+        // 🛡️ بیک اپ: اگر open آئے تو بھی بھیج دیں
         sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
             console.log(`🔄 Connection update: ${connection}`);
             if (connection === "open" && !sessionSent) {
@@ -191,6 +183,7 @@ END:VCARD`
             }
         });
 
+        // پئیرنگ کوڈ درخواست کریں
         if (!sock.authState.creds.registered) {
             await delay(3000);
             try {
@@ -205,6 +198,7 @@ END:VCARD`
                 }
                 console.log(`✅ Pairing code sent: ${code}`);
 
+                // ⏱️ ٹائم آؤٹ: اگر 40 سیکنڈ میں پئیرنگ نہ ہو تو صفائی
                 setTimeout(() => {
                     if (!sessionSent) {
                         console.log("⏰ Timeout: Pairing did not complete. Cleaning up.");
