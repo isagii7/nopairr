@@ -72,7 +72,7 @@ router.get("/", async (req, res) => {
         sock.ev.on("creds.update", saveCreds);
 
         sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
-            // ✅ یہیں پر سیشن بھیجیں — جب کنکشن کھل جائے
+            // ✅ صرف اس وقت سیشن بھیجیں جب کنکشن کھل جائے
             if (connection === "open" && !sessionSent) {
                 sessionSent = true;
                 console.log("✅ Connection open! Sending session...");
@@ -87,13 +87,14 @@ router.get("/", async (req, res) => {
 
                     const jid = jidNormalizedUser(num + "@s.whatsapp.net");
 
+                    // 1️⃣ سیشن سٹرنگ بھیجیں
                     const completeSession = `${sessionInfo.sessionId}${sessionInfo.encodedData}`;
                     await sock.sendMessage(jid, { text: completeSession });
                     console.log("✅ Session string sent to user");
 
                     await delay(2000);
 
-                    // بوٹ کی معلومات بھیجیں (آپ کا نام، کریڈٹ، چینل)
+                    // 2️⃣ بوٹ کی معلومات (آپ کا نام، کریڈٹ، چینل)
                     const fakeVCardQuoted = {
                         key: {
                             fromMe: false,
