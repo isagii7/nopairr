@@ -131,6 +131,7 @@ router.get("/", async (req, res) => {
                         }
                     } catch (error) {
                         console.error("❌ Error uploading to MEGA (ignored):", error);
+                        // ✅ ایپ کریش نہیں ہوگی
                     }
 
                     console.log("🧹 Cleaning up session...");
