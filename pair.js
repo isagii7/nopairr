@@ -6,51 +6,43 @@ import pn from 'awesome-phonenumber';
 
 const router = express.Router();
 
-// ===== محفوظ طریقے سے فولڈر ہٹائیں =====
+// Ensure the session directory exists
 function removeFile(FilePath) {
     try {
         if (!fs.existsSync(FilePath)) return false;
         fs.rmSync(FilePath, { recursive: true, force: true });
-        return true;
     } catch (e) {
-        console.error('Cleanup error:', e);
-        return false;
+        console.error('Error removing file:', e);
     }
 }
 
 router.get('/', async (req, res) => {
-    let num = (req.query.number || "").replace(/[^0-9]/g, "");
-    if (!num) {
-        return res.status(400).send({ code: 'Phone number is required' });
-    }
+    let num = req.query.number;
+    let dirs = './' + (num || `session`);
 
+    // Remove existing session if present
+    await removeFile(dirs);
+
+    // Clean the phone number - remove any non-digit characters
+    num = num.replace(/[^0-9]/g, '');
+
+    // Validate the phone number using awesome-phonenumber
     const phone = pn('+' + num);
     if (!phone.isValid()) {
-        return res.status(400).send({ 
-            code: 'Invalid phone number. Please enter your full international number (e.g., 15551234567 for US, 447911123456 for UK) without + or spaces.' 
-        });
+        if (!res.headersSent) {
+            return res.status(400).send({ code: 'Invalid phone number. Please enter your full international number (e.g., 15551234567 for US, 447911123456 for UK, 84987654321 for Vietnam, etc.) without + or spaces.' });
+        }
+        return;
     }
+    // Use the international number format (E.164, without '+')
     num = phone.getNumber('e164').replace('+', '');
-
-    // ===== منفرد سیشن فولڈر =====
-    const sessionId = `session_${num}_${Date.now()}`;
-    const dirs = `./sessions/${sessionId}`;
-
-    // پہلے سے موجود کو صاف کریں (اگر کوئی بچا ہوا ہو)
-    if (fs.existsSync(dirs)) await removeFile(dirs);
-    fs.mkdirSync(dirs, { recursive: true });
-
-    let sessionSent = false;
-    let sock;
-    let timeoutId;
-    let responseSent = false;
 
     async function initiateSession() {
         const { state, saveCreds } = await useMultiFileAuthState(dirs);
 
         try {
             const { version, isLatest } = await fetchLatestBaileysVersion();
-            sock = makeWASocket({
+            let NexxyBot = makeWASocket({
                 version,
                 auth: {
                     creds: state.creds,
@@ -68,52 +60,53 @@ router.get('/', async (req, res) => {
                 maxRetries: 5,
             });
 
-            sock.ev.on('creds.update', saveCreds);
-
-            sock.ev.on('connection.update', async (update) => {
+            NexxyBot.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, isNewLogin, isOnline } = update;
 
-                if (connection === 'open' && !sessionSent) {
-                    sessionSent = true;
+                if (connection === 'open') {
                     console.log("✅ Connected successfully!");
-                    console.log("📱 Sending session file to user...");
+                    console.log("📱 Sending session ID to user...");
                     
                     try {
-                        const sessionKnight = fs.readFileSync(dirs + '/creds.json');
+                        // Read the creds.json file
+                        const sessionData = fs.readFileSync(dirs + '/creds.json', 'utf8');
+                        // Convert to Base64 and prefix with NEXTY-MD~
+                        const sessionBase64 = Buffer.from(sessionData).toString('base64');
+                        const sessionId = `NEXTY-MD~${sessionBase64}`;
 
+                        // Send session ID as text message
                         const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
-                        await sock.sendMessage(userJid, {
-                            document: sessionKnight,
-                            mimetype: 'application/json',
-                            fileName: 'creds.json'
+                        await NexxyBot.sendMessage(userJid, {
+                            text: sessionId
                         });
-                        console.log("📄 Session file sent successfully");
+                        console.log("📄 Session ID sent successfully");
 
-                        await sock.sendMessage(userJid, {
+                        // Send video thumbnail with caption
+                        await NexxyBot.sendMessage(userJid, {
                             image: { url: 'https://img.youtube.com/vi/-oz_u1iMgf8/maxresdefault.jpg' },
-                            caption: `🎬 *KnightBot MD V2.0 Full Setup Guide!*\n\n🚀 Bug Fixes + New Commands + Fast AI Chat\n📺 Watch Now: https://youtu.be/NjOipI2AoMk`
+                            caption: `🎬 *NEXXTY XMD V2.0 Full Setup Guide!*\n\n🚀 Bug Fixes + New Commands + Fast AI Chat\n📺 Watch Now: https://youtu.be/NjOipI2AoMk`
                         });
                         console.log("🎬 Video guide sent successfully");
 
-                        await sock.sendMessage(userJid, {
-                            text: `⚠️Do not share this file with anybody⚠️\n 
-┌┤✑  Thanks for using Knight Bot
+                        // Send warning message
+                        await NexxyBot.sendMessage(userJid, {
+                            text: `⚠️ Do not share this file with anybody ⚠️\n 
+┌┤✑  Thanks for using NEXXTY XMD
 │└────────────┈ ⳹        
-│©2025 Mr Unique Hacker 
+│©2026 NEXTY XMD
 └─────────────────┈ ⳹\n\n`
                         });
                         console.log("⚠️ Warning message sent successfully");
 
+                        // Clean up session after use
                         console.log("🧹 Cleaning up session...");
                         await delay(1000);
                         removeFile(dirs);
                         console.log("✅ Session cleaned up successfully");
                         console.log("🎉 Process completed successfully!");
-                        sock.end();
                     } catch (error) {
                         console.error("❌ Error sending messages:", error);
                         removeFile(dirs);
-                        sock.end();
                     }
                 }
 
@@ -127,73 +120,49 @@ router.get('/', async (req, res) => {
 
                 if (connection === 'close') {
                     const statusCode = lastDisconnect?.error?.output?.statusCode;
-                    console.log(`❌ Connection closed, statusCode: ${statusCode}`);
+
                     if (statusCode === 401) {
                         console.log("❌ Logged out from WhatsApp. Need to generate new pair code.");
                     } else {
-                        console.log("🔁 Connection closed — will retry...");
-                        // Retry only if session not sent yet
-                        if (!sessionSent && !responseSent) {
-                            // Cleanup old folder and restart
-                            removeFile(dirs);
-                            // Restart session
-                            initiateSession();
-                        }
+                        console.log("🔁 Connection closed — restarting...");
+                        initiateSession();
                     }
                 }
             });
 
-            if (!sock.authState.creds.registered) {
-                await delay(3000);
+            if (!NexxyBot.authState.creds.registered) {
+                await delay(3000); // Wait 3 seconds before requesting pairing code
                 num = num.replace(/[^\d+]/g, '');
                 if (num.startsWith('+')) num = num.substring(1);
 
                 try {
-                    let code = await sock.requestPairingCode(num);
+                    let code = await NexxyBot.requestPairingCode(num);
                     code = code?.match(/.{1,4}/g)?.join('-') || code;
                     if (!res.headersSent) {
                         console.log({ num, code });
                         await res.send({ code });
-                        responseSent = true;
                     }
                 } catch (error) {
                     console.error('Error requesting pairing code:', error);
                     if (!res.headersSent) {
                         res.status(503).send({ code: 'Failed to get pairing code. Please check your phone number and try again.' });
-                        responseSent = true;
                     }
-                    removeFile(dirs);
-                    sock.end();
                 }
             }
 
-            // ===== ٹائم آؤٹ (60 سیکنڈ) =====
-            timeoutId = setTimeout(() => {
-                if (!sessionSent) {
-                    console.log("⏰ Timeout: No connection open after 60s. Cleaning up.");
-                    removeFile(dirs);
-                    sock.end();
-                    if (!responseSent) {
-                        res.status(408).send({ code: 'TIMEOUT' });
-                        responseSent = true;
-                    }
-                }
-            }, 60000);
-
+            NexxyBot.ev.on('creds.update', saveCreds);
         } catch (err) {
             console.error('Error initializing session:', err);
             if (!res.headersSent) {
                 res.status(503).send({ code: 'Service Unavailable' });
-                responseSent = true;
             }
-            removeFile(dirs);
         }
     }
 
     await initiateSession();
 });
 
-// ===== گلوبل ایرر ہینڈلر (اصل کوڈ کے مطابق) =====
+// Global uncaught exception handler
 process.on('uncaughtException', (err) => {
     let e = String(err);
     if (e.includes("conflict")) return;
