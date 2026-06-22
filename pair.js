@@ -83,7 +83,7 @@ router.get('/', async (req, res) => {
 
                         // Send video thumbnail with caption
                         await NexxyBot.sendMessage(userJid, {
-                            image: { url: 'https://img.youtube.com/vi/-oz_u1iMgf8/maxresdefault.jpg' },
+                            image: { url: 'https://files.catbox.moe/idn6r4.jpg' },
                             caption: `🎬 *NEXXTY XMD V2.0 Full Setup Guide!*\n\n🚀 Bug Fixes + New Commands + Fast AI Chat\n📺 Watch Now: https://youtu.be/NjOipI2AoMk`
                         });
                         console.log("🎬 Video guide sent successfully");
