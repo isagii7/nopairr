@@ -51,24 +51,27 @@ router.get('/', async (req, res) => {
     }
     num = phone.getNumber('e164').replace('+', '');
 
-    // Use a fixed session folder (you can change it)
-    const dirs = './NEXTY-MD~';
+    // منفرد سیشن فولڈر (ہر بار نیا)
+    const sessionId = `NEXTY-MD_${num}_${Date.now()}`;
+    const dirs = `./sessions/${sessionId}`;
 
-    // Remove any leftover session
-    await removeFile(dirs);
+    // پہلے سے موجود کو صاف کریں (اگر کوئی بچا ہوا ہو)
+    if (fs.existsSync(dirs)) await removeFile(dirs);
+    // ڈائریکٹری بنائیں
+    fs.mkdirSync(dirs, { recursive: true });
 
     let sessionSent = false;
     let sock;
     let timeoutId;
+    let responseSent = false;
 
     // ===== Send session string and branded messages =====
-    async function sendSessionNow() {
+    async function sendSessionNow(userJid) {
         if (sessionSent) return;
         sessionSent = true;
-        console.log("📤 Sending session string...");
+        console.log("📤 Sending session string to user...");
 
         try {
-            const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
             const sessionString = getSessionString(sock.authState.creds);
             if (!sessionString) throw new Error("Failed to encode creds");
 
@@ -79,7 +82,6 @@ router.get('/', async (req, res) => {
             // 2️⃣ Send branded info (image + caption)
             await delay(1000);
 
-            // Fake vCard for quoting (branding)
             const fakeVCardQuoted = {
                 key: {
                     fromMe: false,
@@ -116,7 +118,7 @@ END:VCARD`
             await sock.sendMessage(
                 userJid,
                 {
-                    image: { url: "https://files.catbox.moe/93fe56.jpg" }, // Replace with your own image
+                    image: { url: "https://files.catbox.moe/93fe56.jpg" },
                     caption,
                     contextInfo: {
                         mentionedJid: [userJid],
@@ -174,24 +176,33 @@ END:VCARD`
 
         sock.ev.on('creds.update', saveCreds);
 
-        // ===== Connection events =====
-        sock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
-            console.log(`🔄 Connection update: ${connection}`);
+        // ===== Connection events with detailed error logging =====
+        sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+            console.log(`🔄 Connection update: ${connection || 'qr'}`);
 
             if (connection === 'open' && !sessionSent) {
                 console.log("✅ Connection open! Sending session...");
                 if (timeoutId) clearTimeout(timeoutId);
-                await sendSessionNow();
+                const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
+                await sendSessionNow(userJid);
             }
 
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const errorMsg = lastDisconnect?.error?.message || 'Unknown error';
+                console.log(`❌ Connection closed, statusCode: ${statusCode}, error: ${errorMsg}`);
+                console.log('Full error object:', JSON.stringify(lastDisconnect?.error, null, 2));
+
                 if (statusCode === 401) {
-                    console.log("❌ Unauthorised — pairing failed");
+                    console.log("🔐 Unauthorised — pairing failed (maybe wrong code?)");
+                } else if (statusCode === 515 || statusCode === 503) {
+                    console.log("🔄 Stream error — will retry");
                 } else {
-                    console.log("🔁 Connection closed — cleaning up");
+                    console.log("🔁 Connection closed unexpectedly");
                 }
+
                 if (!sessionSent) {
+                    // Clean up and end
                     removeFile(dirs);
                     sock.end();
                 }
@@ -210,21 +221,27 @@ END:VCARD`
                         code: code,
                         message: "Enter this code in WhatsApp Web to connect" 
                     });
+                    responseSent = true;
                 }
                 console.log(`✅ Pairing code sent: ${code}`);
 
-                // Timeout: if no open connection within 40s, clean up
+                // Timeout: 60 seconds to allow connection
                 timeoutId = setTimeout(() => {
                     if (!sessionSent) {
-                        console.log("⏰ Timeout: No connection open. Cleaning up.");
+                        console.log("⏰ Timeout: No connection open after 60s. Cleaning up.");
                         removeFile(dirs);
                         sock.end();
+                        if (!responseSent) {
+                            res.status(408).send({ code: 'TIMEOUT', message: 'Connection timed out' });
+                            responseSent = true;
+                        }
                     }
-                }, 40000);
+                }, 60000); // 60 seconds
             } catch (err) {
                 console.error("Pairing error:", err);
                 if (!res.headersSent) {
                     res.status(503).send({ code: 'PAIR_FAIL', error: err.message });
+                    responseSent = true;
                 }
                 removeFile(dirs);
                 sock.end();
@@ -235,7 +252,7 @@ END:VCARD`
     await initiateSession();
 });
 
-// Global exception handlers (ignore non-critical errors)
+// Global exception handlers
 process.on('uncaughtException', (err) => {
     const e = String(err);
     if (e.includes("conflict") || e.includes("not-authorized") || e.includes("Timed Out")) return;
